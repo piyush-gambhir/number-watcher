@@ -8,6 +8,8 @@ Requests specify area codes, required capabilities, quantity, provider preferenc
 
 ## Setup
 
+For AWS hosting, use the [Terraform setup and cost guide](infra/terraform/README.md). It provides EventBridge Scheduler, short Node.js 24 Lambda invocations, DynamoDB checkpoints, and Secrets Manager references. Estimated AWS cost is about $1/month for ten full 24-hour requests or $3/month for 100, assuming five-second rounds at 512 MB, excluding number/email fees. No AWS resources have been deployed. The local CLI below remains available for development and running on your own machine.
+
 Use Node 24 LTS, Node 22.13+, or Node 26+. Install dependencies and build:
 
 ```sh

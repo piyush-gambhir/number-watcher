@@ -12,12 +12,17 @@
   "scripts": {
     "cli": "tsx src/cli.ts",
     "build": "tsc -p tsconfig.build.json",
+    "build:lambda": "node scripts/build-lambda.mjs",
+    "cloud:request": "node scripts/prepare-cloud-request.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src test scripts",
     "test": "vitest run",
     "test:live": "tsx scripts/verify-live.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "3.1156.0",
+    "@aws-sdk/client-scheduler": "3.1156.0",
+    "@aws-sdk/client-secrets-manager": "3.1156.0",
     "commander": "15.0.0",
     "nodemailer": "10.2.1",
     "proper-lockfile": "4.1.2",
@@ -27,6 +32,7 @@
     "@types/node": "26.6.5",
     "@types/nodemailer": "8.0.2",
     "@types/proper-lockfile": "4.1.4",
+    "esbuild": "0.28.2",
     "eslint": "10.13.0",
     "tsx": "4.23.15",
     "typescript": "6.0.3",

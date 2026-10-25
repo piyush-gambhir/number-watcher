@@ -1,12 +1,12 @@
 # Number Watcher specification
 
-Version 0.2, October 25, 2026. The CLI, durable request queue, provider adapters, and notification modules are implemented. Live account validation remains an operator step.
+Version 0.3, October 26, 2026. The CLI, durable request queue, provider adapters, notification modules, and AWS Lambda/Terraform implementation are available. AWS deployment and live purchase/delivery acceptance remain operator steps.
 
 ## 1. Purpose and scope
 
 Watch available phone numbers on selected providers and either acquire the requested quantity or notify when enough matching inventory is observed. Start with Twilio and Telnyx; keep provider-specific API behavior outside the shared job engine.
 
-The first version is a TypeScript CLI, one active job on one always-on machine, using persistent local disk. It supports US local numbers only. A dashboard, distributed workers, additional countries/number types, porting, creating voice or messaging applications, provider reservations, and continuous monitoring after fulfillment are deferred.
+The application supports a TypeScript CLI with persistent local disk and an AWS Lambda runtime with DynamoDB checkpoints and per-request EventBridge Scheduler triggers. It supports US local numbers only. A dashboard, additional countries/number types, porting, creating voice or messaging applications, provider reservations, and continuous monitoring after fulfillment are deferred.
 
 A job uses one account per selected provider. Numbers acquired from different providers stay with their respective providers. Each must have its own compatible voice/messaging integration; this tool does not translate provider webhook payloads or move numbers between providers.
 
@@ -104,7 +104,7 @@ Sources: [search](https://www.twilio.com/docs/phone-numbers/api/availablephonenu
 
 Search `/v2/available_phone_numbers` with country, local type, `national_destination_code`, capabilities, and `best_effort=false`. Validate every returned match. Telnyx requires a recent search before an order, so refresh the candidate's availability if a saved candidate is being used after a delay/restart.
 
-Order one exact number at a time through `/v2/number_orders`, including the applicable `connection_id`, `messaging_profile_id`, and job-specific `customer_reference`. Save the order ID immediately. A successful HTTP response means an order exists, not necessarily that activation finished. Poll its status, initially every 30 seconds, until success or a definite failure. Pending regulatory/setup requirements must be reported explicitly.
+Order one exact number at a time through `/v2/number_orders`, including the applicable `connection_id`, `messaging_profile_id`, and job-specific `customer_reference`. Save the order ID immediately. A successful HTTP response means an order exists, not necessarily that activation finished. Poll its status every 30 seconds in the local runner or on the next scheduled cloud invocation. Pending regulatory/setup requirements must be reported explicitly.
 
 Verify the activated number's connection/profile assignments and the effective application/profile webhook URLs. These resources are pre-existing and are not rewritten by the tool. Provider-native handlers must already work; a Twilio handler URL is not presumed compatible with Telnyx.
 
@@ -218,7 +218,7 @@ Run typecheck, lint, and focused tests before building or shipping changes. Live
 
 ## 11. Runtime limits
 
-- One active request on a single host with persistent disk. Queued requests run sequentially; there is no web UI or hosted API.
+- Local CLI: one active request on a single host with persistent disk. Queued requests run sequentially. Cloud: independent requests use per-job DynamoDB leases and checkpoints. There is no web UI or public HTTP API.
 - US local numbers; quantity shared across all selected area codes/providers.
 - Notify mode uses a same-round threshold, sends one availability event, then stops.
 - Twilio service preflight enforces the default 400-number capacity; custom larger limits are not detected.
@@ -227,3 +227,15 @@ Run typecheck, lint, and focused tests before building or shipping changes. Live
 - Failed purchases or notifications do not trigger automatic number releases, provider failover for uncertain writes, or email failover.
 
 Example requests use area codes 210/726 and quantity two as placeholders. Copy and edit them for an actual request. See README.md for setup, queue operation, notification selection, and recovery.
+
+## 12. AWS runtime
+
+The [Terraform guide](infra/terraform/README.md) defines setup, commands, costs, and deployment limits. The cloud runtime runs one bounded round per invocation, with no sleeping between polls. It uses Node.js 24, a 120-second timeout, a 180-second conditional lease, transactional revision checks, and compressed DynamoDB checkpoints. Only lease records have TTL; job records persist.
+
+Cloud `submit` takes a caller-generated UUID and the same immutable configuration. Repeated submission of that UUID is idempotent and cannot reset progress; a different configuration for that UUID is rejected. A new UUID authorizes a separate quantity. Duration starts at durable creation, before remote preflight. A recovery schedule must exist before any provider purchase. AWS intervals must be whole minutes, from five to 60 minutes. Scheduler uses approximate minute-level timing.
+
+Cloud commands are `submit`, `status`, `poll`, `cancel`, `resume`, and `retry-notifications`, invoked through IAM-authorized Lambda calls. Status is by job ID. Local and cloud state are separate. Uncertain purchases block further acquisitions in that job; separately submitted jobs are independent. Every new invocation reconciles saved unfinished acquisitions before another purchase. Completed jobs do not purchase again.
+
+Cloud recovery and email/Slack retries continue across invocations. Each notification delivery pass attempts a channel once with at most three automatic attempts total, rather than sleeping for local retry delays. Purchase status and delivery acknowledgement are separate. Schedules are removed when terminal and all deliveries are acknowledged or exhausted, with a hard end date for recovery/delivery grace. Pending orders still unresolved ten minutes after the purchase deadline become `needs_attention` when next checked. Never release their quantity slots automatically.
+
+Terraform supplies secret ARNs, permissions, logs, failure queue, and a queue alarm. Secret values are populated separately in Secrets Manager and never enter Terraform state. No AWS deployment, live IAM validation, actual number purchase/configuration, or external Slack/email delivery is claimed by mock verification.

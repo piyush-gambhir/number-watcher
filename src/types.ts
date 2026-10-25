@@ -26,6 +26,8 @@ export interface Acquisition {
   orderId?: string;
   error?: string;
   eventQueued?: boolean;
+  reconciliationAttempts?: number;
+  configurationAttempts?: number;
 }
 export interface Provider {
   type: ProviderType;

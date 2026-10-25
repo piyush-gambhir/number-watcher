@@ -62,7 +62,8 @@ export function createSender(channel: Channel, env: Env, fetch: Fetch = globalTh
 export class Notifications {
   readonly senders = new Map<string, Sender>();
   constructor(config: Config, env: Env = process.env, fetch: Fetch = globalThis.fetch,
-    readonly clock: Clock = systemClock, factory: typeof createSender = createSender) {
+    readonly clock: Clock = systemClock, factory: typeof createSender = createSender,
+    readonly attemptsPerInvocation = 3) {
     for (const channel of config.notifications?.channels ?? []) this.senders.set(channel.id, factory(channel, env, fetch, clock));
   }
   async deliver(job: Job, save: () => Promise<void>, retry = false, until = Infinity): Promise<void> {
@@ -74,11 +75,13 @@ export class Notifications {
         if (delivery.transport && delivery.transport !== sender.transport) throw new Error('Email provider changed for an unfinished delivery; restore its original provider');
         if (retry) delivery.attempts = 0;
         delivery.transport = sender.transport;
-        while (delivery.attempts < 3 && this.clock.now() < until) {
-          const delay = [0, 5000, 30000][delivery.attempts];
+        let attempted = 0;
+        while (delivery.attempts < 3 && attempted < this.attemptsPerInvocation && this.clock.now() < until) {
+          const delay = this.attemptsPerInvocation === 1 ? 0 : [0, 5000, 30000][delivery.attempts];
           if (this.clock.now() + delay >= until) break;
           if (delay) await this.clock.sleep(delay);
           delivery.attempts++;
+          attempted++;
           await save();
           try { await sender.send(entry.event); }
           catch {

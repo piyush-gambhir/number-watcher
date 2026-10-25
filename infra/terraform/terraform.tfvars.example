@@ -1,0 +1,5 @@
+region             = "us-east-1"
+name               = "number-watcher"
+memory_size        = 512
+log_retention_days = 14
+# credentials_secret_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:existing-secret"

@@ -10,3 +10,10 @@ job.json
 .DS_Store
 requests/
 .test-state-*/
+build/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!*.tfvars.example
