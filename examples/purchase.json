@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "name": "Acquire San Antonio numbers",
+  "mode": "purchase",
+  "country": "US",
+  "numberType": "local",
+  "areaCodes": [
+    "210",
+    "726"
+  ],
+  "requiredCapabilities": [
+    "voice",
+    "sms"
+  ],
+  "quantity": 2,
+  "pollIntervalSeconds": 300,
+  "durationHours": 24,
+  "providers": [
+    {
+      "type": "twilio",
+      "accountSid": "AC00000000000000000000000000000000",
+      "apiKeySidEnv": "TWILIO_API_KEY_SID",
+      "apiKeySecretEnv": "TWILIO_API_KEY_SECRET",
+      "purchase": {
+        "voiceUrl": "https://example.com/webhooks/twilio/voice",
+        "smsUrl": "https://example.com/webhooks/twilio/sms",
+        "messagingServiceSid": "MG00000000000000000000000000000000"
+      }
+    },
+    {
+      "type": "telnyx",
+      "apiKeyEnv": "TELNYX_API_KEY",
+      "purchase": {
+        "connectionId": "1234567890123456789",
+        "expectedVoiceWebhookUrl": "https://example.com/webhooks/telnyx/voice",
+        "messagingProfileId": "00000000-0000-4000-8000-000000000000",
+        "expectedSmsWebhookUrl": "https://example.com/webhooks/telnyx/sms"
+      }
+    }
+  ],
+  "notifications": {
+    "channels": [
+      {
+        "id": "operations-slack",
+        "type": "slack",
+        "webhookUrlEnv": "NUMBER_WATCHER_SLACK_WEBHOOK_URL"
+      },
+      {
+        "id": "operations-email",
+        "type": "email",
+        "provider": "auto",
+        "from": "numbers@example.com",
+        "to": [
+          "operations@example.com"
+        ]
+      }
+    ]
+  },
+  "budget": {
+    "currency": "USD",
+    "maxMonthlyPerNumber": "3.00"
+  }
+}
