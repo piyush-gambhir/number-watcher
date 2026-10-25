@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto';
+import { z } from 'zod';
 import { secret, type Channel, type Config, type Env } from '../config.js';
 import type { Fetch } from '../http.js';
 import type { Clock, Event, Job } from '../types.js';
@@ -30,9 +31,13 @@ function destination(env: Env, key: string, slack = false): string {
 export function createSender(channel: Channel, env: Env, fetch: Fetch = globalThis.fetch, clock: Clock = systemClock,
   emailFactory: typeof createEmailProvider = createEmailProvider): Sender {
   if (channel.type === 'email') {
+    const from = channel.fromEnv ? secret(env, channel.fromEnv).trim() : channel.from;
+    const to = channel.toEnv ? secret(env, channel.toEnv).split(',').map(value => value.trim()) : channel.to;
+    const addresses = z.object({ from: z.string().email(), to: z.array(z.string().email()).min(1).max(20) }).safeParse({ from, to });
+    if (!addresses.success) throw new Error(`Invalid email sender or recipients for notification channel ${channel.id}`);
     const email: EmailProvider = emailFactory(channel.provider, env, fetch);
     return { transport: `email:${email.type}`, send: event => email.send({
-      id: `${event.id}-${channel.id}`, from: channel.from, to: channel.to,
+      id: `${event.id}-${channel.id}`, from: addresses.data.from, to: addresses.data.to,
       subject: `[Number Watcher] ${event.type}: ${event.jobName}`.replace(/[\r\n]/g, ' '), text: renderEvent(event)
     }) };
   }

@@ -32,7 +32,8 @@ const channel = z.discriminatedUnion('type', [
   z.object({
     id: z.string().regex(/^[a-zA-Z0-9_-]+$/), type: z.literal('email'),
     provider: z.enum(['auto', 'smtp', 'resend']).default('auto'),
-    from: z.string().email(), to: z.array(z.string().email()).min(1).max(20)
+    from: z.string().email().optional(), fromEnv: envName.optional(),
+    to: z.array(z.string().email()).min(1).max(20).optional(), toEnv: envName.optional()
   }).strict()
 ]);
 
@@ -55,6 +56,10 @@ export const configSchema = z.object({
     ['providers', config.providers.map(p => p.type)],
     ['notification channel IDs', config.notifications?.channels.map(c => c.id) ?? []]
   ] as const) if (new Set(values).size !== values.length) issue(`Duplicate ${label}`);
+  for (const channel of config.notifications?.channels ?? []) if (channel.type === 'email') {
+    if (!!channel.from === !!channel.fromEnv) issue('Email requires exactly one of from or fromEnv');
+    if (!!channel.to === !!channel.toEnv) issue('Email requires exactly one of to or toEnv');
+  }
   if (config.requiredCapabilities.includes('mms') && !config.requiredCapabilities.includes('sms')) issue('MMS requires SMS');
   if (config.mode === 'notify' && !config.notifications) issue('Notify mode requires at least one notification channel');
   if (config.mode !== 'purchase') return;

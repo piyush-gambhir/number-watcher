@@ -168,4 +168,65 @@ describe('durable acquisition and notify jobs', () => {
     expect(providers).not.toHaveBeenCalled();
     expect(notifications).not.toHaveBeenCalled();
   });
+  it.each([
+    { interval: 300, hours: 24, rounds: 288 },
+    { interval: 600, hours: 1, rounds: 6 }
+  ])('polls immediately and on fixed slots until expiry: %j', async ({ interval, hours, rounds }) => {
+    const provider = new FakeProvider('twilio');
+    const observed: number[] = [];
+    const start = clock.now();
+    provider.search.mockImplementation(async () => { observed.push(clock.now() - start); return []; });
+    const job = await store.add(config({ pollIntervalSeconds: interval, durationHours: hours }));
+    const runner = runWith([provider]);
+    // Exercise the scheduler with virtual time; cancellation-aware waiting has separate coverage.
+    vi.spyOn(runner, 'pause').mockImplementation(async (_job, ms) => { clock.time += ms; });
+    const result = await runner.run(job.id);
+    expect(result.status).toBe('expired');
+    expect(observed).toEqual(Array.from({ length: rounds }, (_, i) => i * interval * 1000));
+    expect(Date.parse(result.deadline!) - Date.parse(result.startedAt!)).toBe(hours * 3600_000);
+    expect(provider.acquire).not.toHaveBeenCalled();
+  }, 15000);
+  it('fills quantity over separate polls without reacquiring an earlier number', async () => {
+    const provider = new FakeProvider('twilio');
+    provider.search.mockResolvedValueOnce([candidate()]).mockResolvedValue([candidate(), candidate('twilio', '+12105550102')]);
+    const job = await store.add(config({ quantity: 2 }));
+    const runner = runWith([provider]);
+    vi.spyOn(runner, 'pause').mockImplementation(async (_job, ms) => { clock.time += ms; });
+    const result = await runner.run(job.id);
+    expect(result.status).toBe('succeeded');
+    expect(provider.acquire.mock.calls.map(([, a]) => a.candidate.phoneNumber)).toEqual(['+12105550101', '+12105550102']);
+    expect(clock.now() - Date.parse(result.startedAt!)).toBe(300_000);
+  });
+  it('skips elapsed slots after slow searches and never overlaps polling rounds', async () => {
+    const provider = new FakeProvider('twilio');
+    const start = clock.now();
+    const observed: number[] = [];
+    let inFlight = 0;
+    provider.search.mockImplementation(async () => {
+      expect(inFlight).toBe(0);
+      inFlight++;
+      observed.push(clock.now() - start);
+      await clock.sleep(420_000);
+      inFlight--;
+      return [];
+    });
+    const job = await store.add(config({ durationHours: 1 }));
+    const runner = runWith([provider]);
+    vi.spyOn(runner, 'pause').mockImplementation(async (_job, ms) => { clock.time += ms; });
+    expect((await runner.run(job.id)).status).toBe('expired');
+    expect(observed).toEqual([0, 600_000, 1_200_000, 1_800_000, 2_400_000, 3_000_000]);
+  });
+  it('keeps pending orders occupying quantity through the acquisition deadline and recovery budget', async () => {
+    const provider = new FakeProvider('telnyx', [candidate('telnyx')]);
+    provider.acquire.mockImplementation(async (_c, a) => ({ ...a, state: 'pending', orderId: 'pending-order' }));
+    provider.reconcile.mockImplementation(async (_c, a) => ({ ...a, state: 'pending' }));
+    const job = await store.add(config({ quantity: 2, durationHours: 1 }));
+    const runner = runWith([provider]);
+    vi.spyOn(runner, 'pause').mockImplementation(async (_job, ms) => { clock.time += ms; });
+    const result = await runner.run(job.id);
+    expect(result.status).toBe('needs_attention');
+    expect(progress(result)).toMatchObject({ pending: 1, remaining: 1, configured: 0 });
+    expect(provider.acquire).toHaveBeenCalledTimes(1);
+    expect(clock.now()).toBe(Date.parse(result.deadline!) + 600_000);
+  });
 });

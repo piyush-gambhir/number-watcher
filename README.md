@@ -30,7 +30,7 @@ mkdir -p requests
 cp examples/notify.json requests/san-antonio.json
 ```
 
-Set the request name, area codes, required capabilities, quantity, and selected providers. Replace the example account SID. Remove provider entries you will not use. The examples enable both Slack and email; remove an unwanted channel or replace its sender/recipient addresses. The sample price ceiling is illustrative, not a current quote.
+Set the request name, area codes, required capabilities, quantity, and selected providers. Replace the example account SID. Remove provider entries you will not use. The examples enable both Slack and email, with delivery settings and email addresses supplied through environment variables. Remove an unwanted channel if needed. The sample price ceiling is illustrative, not a current quote.
 
 Validate JSON without credentials or network access, then queue it:
 
@@ -59,7 +59,7 @@ node dist/cli.js --env-file .env run --job <job-id>
 node dist/cli.js --env-file .env worker
 ```
 
-The worker processes one request at a time, in order, and waits for newly added requests. `worker --once` drains the available queue and exits. Each request's polling duration starts after its execution preflight. To add and run a request immediately, use `start --config <path>`.
+The worker processes one request at a time, in order, and waits for newly added requests. `worker --once` drains the available queue and exits. Each request's polling duration starts after its execution preflight. To add and run a request immediately, use `start --config <path>`. Scheduling currently means the polling interval and absolute expiry; future start times and calendar/cron schedules are not implemented.
 
 Keep the machine awake and run the worker under your existing process supervisor for unattended operation. All commands must use the same persistent state directory. Use `--state-dir /absolute/path` if starting commands from different working directories. Multiple machines or independent state roots are not coordinated.
 
@@ -96,11 +96,23 @@ For Slack, create or reuse an incoming webhook for the desired channel, then set
 
 See [Slack's incoming webhook setup](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/). No Slack bot commands or interactive purchase buttons are needed.
 
-For email, requests specify addresses and optionally a provider:
+The examples configure email using sender/recipient environment-variable references and an optional provider:
 
 ```json
-{"id":"operations-email","type":"email","provider":"auto","from":"numbers@example.com","to":["operations@example.com"]}
+{"id":"operations-email","type":"email","provider":"auto","fromEnv":"NUMBER_WATCHER_EMAIL_FROM","toEnv":"NUMBER_WATCHER_EMAIL_TO"}
 ```
+
+With either supplied request example, Slack and email setup only requires environment variables:
+
+```dotenv
+NUMBER_WATCHER_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/your/webhook/path
+NUMBER_WATCHER_EMAIL_PROVIDER=resend
+NUMBER_WATCHER_EMAIL_FROM=numbers@your-domain.com
+NUMBER_WATCHER_EMAIL_TO=you@your-domain.com,team@your-domain.com
+RESEND_API_KEY=your-resend-api-key
+```
+
+For SMTP, set `NUMBER_WATCHER_EMAIL_PROVIDER=smtp` and `SMTP_URL` instead of `RESEND_API_KEY`. No application-code changes are needed. Sender/recipient addresses are validated before polling begins. Requests may also use explicit `from` and `to` addresses instead of `fromEnv` and `toEnv`, but cannot specify both forms for the same field. The sender must already be authorized by the email provider. Actual external delivery still needs a live test using a dedicated destination.
 
 The email module selects the provider:
 
@@ -140,7 +152,7 @@ Telnyx credential continuity is enforced by a stored hash of its API key, not an
 
 `retry-notifications` sends only outstanding deliveries. It never reruns search or purchase logic. Purchase success remains success when Slack/email delivery fails; inspect outbox delivery status separately. Notify success requires acknowledgement from all configured channels. Read-only checks validate notification configuration but do not verify real email or Slack delivery.
 
-State contains request settings, phone numbers, addresses, order IDs, and delivery history. Credentials, resolved notification URLs, and signing secrets are excluded. Keep `.state` private and persistent.
+State contains request settings, phone numbers, order IDs, and delivery history. Explicit email addresses supplied in requests are saved; environment-resolved email addresses are not. Credentials, resolved notification URLs, and signing secrets are excluded. Keep `.state` private and persistent.
 
 ## Development and verification
 

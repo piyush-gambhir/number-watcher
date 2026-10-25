@@ -25,6 +25,14 @@ describe('request validation and matching', () => {
     const cfg = config();
     expect(() => parseConfig({ ...cfg, providers: [cfg.providers[0], cfg.providers[0]] })).toThrow();
   });
+  it('requires unambiguous sender and recipient sources for email', () => {
+    const base = { id: 'email', type: 'email', fromEnv: 'FROM', toEnv: 'TO' };
+    expect(() => config({ notifications: { channels: [base] } })).not.toThrow();
+    for (const channel of [
+      { ...base, from: 'numbers@example.com' }, { ...base, to: ['ops@example.com'] },
+      { ...base, fromEnv: undefined }, { ...base, toEnv: undefined }
+    ]) expect(() => config({ notifications: { channels: [channel] } })).toThrow('Email requires exactly one');
+  });
   it('uses exact decimal boundaries and rejects unknown or over-precision prices', () => {
     const cfg = config({ budget: { currency: 'USD', maxMonthlyPerNumber: '0.3000', maxOneTimeFeePerNumber: '0' } });
     const price = { ...candidate().price!, monthly: '0.3000' };

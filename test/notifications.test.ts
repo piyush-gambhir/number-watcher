@@ -59,6 +59,32 @@ describe('channel and email provider adapters', () => {
     await expect(new ResendEmail('secret', fetch).send(message)).rejects.toThrow('HTTP 429');
     expect(fetch).toHaveBeenCalledTimes(1);
   });
+  it('configures Slack and email entirely from environment variables with the documented example', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const { parseConfig } = await import('../src/config.js');
+    const cfg = parseConfig(JSON.parse(await readFile('examples/notify.json', 'utf8')));
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async input => String(input).startsWith('https://api.resend.com/')
+      ? new Response(JSON.stringify({ id: 'accepted-email' })) : new Response('ok'));
+    const env = {
+      NUMBER_WATCHER_SLACK_WEBHOOK_URL: 'https://hooks.slack.com/services/test/channel/secret',
+      NUMBER_WATCHER_EMAIL_PROVIDER: 'resend', RESEND_API_KEY: 'test-secret',
+      NUMBER_WATCHER_EMAIL_FROM: 'numbers@example.com', NUMBER_WATCHER_EMAIL_TO: ' first@example.com,second@example.com '
+    };
+    const notifier = new Notifications(cfg, env, fetch);
+    for (const sender of notifier.senders.values()) await sender.send(event);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    const emailCall = fetch.mock.calls.find(([input]) => String(input) === 'https://api.resend.com/emails')!;
+    expect(JSON.parse(emailCall[1]!.body as string)).toMatchObject({ from: 'numbers@example.com', to: ['first@example.com', 'second@example.com'] });
+  });
+  it('rejects missing or malformed email address variables before delivery without printing values', () => {
+    const channel = { id: 'email', type: 'email' as const, provider: 'auto' as const, fromEnv: 'FROM', toEnv: 'TO' };
+    const factory = vi.fn();
+    expect(() => createSender(channel, { TO: 'ops@example.com' }, globalThis.fetch, new FakeClock(), factory)).toThrow('Missing environment variable: FROM');
+    expect(() => createSender(channel, { FROM: 'secret-invalid-value', TO: 'ops@example.com' }, globalThis.fetch, new FakeClock(), factory))
+      .toThrow('Invalid email sender or recipients for notification channel email');
+    expect(() => createSender(channel, { FROM: 'numbers@example.com', TO: 'one@example.com,' }, globalThis.fetch, new FakeClock(), factory)).toThrow('Invalid email');
+    expect(factory).not.toHaveBeenCalled();
+  });
 });
 
 describe('durable independent notification deliveries', () => {

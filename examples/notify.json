@@ -38,10 +38,8 @@
         "id": "operations-email",
         "type": "email",
         "provider": "auto",
-        "from": "numbers@example.com",
-        "to": [
-          "operations@example.com"
-        ]
+        "fromEnv": "NUMBER_WATCHER_EMAIL_FROM",
+        "toEnv": "NUMBER_WATCHER_EMAIL_TO"
       }
     ]
   }
