@@ -13,8 +13,9 @@
     "cli": "tsx src/cli.ts",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src test",
-    "test": "vitest run"
+    "lint": "eslint src test scripts",
+    "test": "vitest run",
+    "test:live": "tsx scripts/verify-live.ts"
   },
   "dependencies": {
     "commander": "15.0.0",

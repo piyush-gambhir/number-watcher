@@ -153,4 +153,14 @@ npm run build
 
 Tests cover filtering, price limits, both providers' HTTP contracts, lost purchase responses, cross-provider quantity, pending orders, durable intent, cancellation, restarts, notification retries, SMTP/Resend selection, and mocked end-to-end acquisition. Development verification uses fake credentials and mocked transport responses. Real purchases and notification delivery have not been exercised.
 
+A read-only Twilio check has also passed against a real account: authentication, owned-number inventory, exact-area-code search, price lookup, durable notify execution, signed local notification capture, and completed-job resume. It caught a REST capability-key mismatch (`SMS`/`MMS` versus lowercase keys), now covered by a regression test. Telnyx live behavior, external Slack/email delivery, and actual number purchase/configuration remain unverified.
+
+To repeat live read-only verification with an explicit credential file:
+
+```sh
+npm run test:live -- --env-file /path/to/uat.env --providers twilio --area-codes 210,726
+```
+
+Use `--providers twilio,telnyx` to check both. Twilio accepts `TWILIO_ACCOUNT_SID` with either `TWILIO_API_KEY_SID`/`TWILIO_API_KEY_SECRET` or `TWILIO_AUTH_TOKEN`. Telnyx requires `TELNYX_API_KEY`. Credentials are read in memory and never copied to the project. The verifier blocks all provider mutations, captures notifications locally, uses temporary ignored state, and prints a redacted summary. Missing credentials are reported as untested, never as a passed check. Exit codes: 0 for all selected checks passing, 1 for a failed check, 2 for missing provider credentials, and 3 for no inventory within the bounded test window. No external Slack/email messages are sent by this command.
+
 See [SPEC.md](SPEC.md) for the full contract and runtime limits. Additional phone-number providers implement the internal [Provider interface](src/types.ts); shared scheduling, accounting, state, and notifications stay in the engine.

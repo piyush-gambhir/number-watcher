@@ -14,6 +14,16 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 
 describe('provider API contracts', () => {
   const cfg = config();
+  it('normalizes Twilio REST SMS/MMS capability keys without dropping valid inventory', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(json({ available_phone_numbers: [
+      { phone_number: '+12105550101', iso_country: 'US', capabilities: { voice: true, SMS: true, MMS: true } },
+      { phone_number: '+12105550102', iso_country: 'US', capabilities: { voice: true, SMS: false, MMS: false } }
+    ] }));
+    const provider = new Twilio(cfg.providers[0] as Extract<ProviderConfig, { type: 'twilio' }>, env, new Http(fetch));
+    const found = await provider.search(cfg, '210', 2);
+    expect(found[0].capabilities).toEqual(['voice', 'sms', 'mms']);
+    expect(found[1].capabilities).toEqual(['voice']);
+  });
   it('uses AND capability filters and exact area-code filters on both providers', async () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async input => {
       const url = new URL(String(input));
@@ -108,7 +118,7 @@ describe('worker through real adapters, persisted state, and notification transp
         return json({ account_sid: `AC${'0'.repeat(32)}`, use_inbound_webhook_on_number: true });
       }
       if (url.hostname === 'api.twilio.com') {
-        if (url.pathname.includes('/AvailablePhoneNumbers/')) return json({ available_phone_numbers: [{ phone_number: '+12105550101', iso_country: 'US', capabilities: { voice: true, sms: true } }] });
+        if (url.pathname.includes('/AvailablePhoneNumbers/')) return json({ available_phone_numbers: [{ phone_number: '+12105550101', iso_country: 'US', capabilities: { voice: true, SMS: true, MMS: true } }] });
         if (url.pathname.endsWith('/IncomingPhoneNumbers.json')) {
           if (method === 'GET') return json({ incoming_phone_numbers: twilioOwned ? [twilioOwned] : [] });
           purchases++;
