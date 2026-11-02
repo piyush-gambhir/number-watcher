@@ -11,10 +11,11 @@
   },
   "scripts": {
     "cli": "tsx src/cli.ts",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node node_modules/@typescript/native/bin/tsc -p tsconfig.build.json",
     "build:lambda": "node scripts/build-lambda.mjs",
     "cloud:request": "node scripts/prepare-cloud-request.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node node_modules/@typescript/native/bin/tsc --noEmit",
+    "typecheck:compat": "node node_modules/typescript/bin/tsc --noEmit",
     "lint": "eslint src test scripts",
     "test": "vitest run",
     "test:live": "tsx scripts/verify-live.ts"
@@ -32,6 +33,7 @@
     "@types/node": "26.6.6",
     "@types/nodemailer": "8.0.2",
     "@types/proper-lockfile": "4.1.4",
+    "@typescript/native": "npm:typescript@7.0.2",
     "esbuild": "0.28.2",
     "eslint": "10.13.0",
     "tsx": "4.23.15",
