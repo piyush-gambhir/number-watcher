@@ -17,3 +17,8 @@ updates:
       dependencies:
         patterns: ["*"]
         update-types: [minor, patch]
+    ignore:
+      # typescript-eslint peers on typescript <6.1.0 and needs the TS JS API, which TS 7.0 does not ship.
+      # TS 7 tsc already runs through the npm:typescript@7 alias. Drop this once they support 7.x.
+      - dependency-name: typescript
+        versions: ["7.x"]
