@@ -21,9 +21,9 @@
     "test:live": "tsx scripts/verify-live.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "3.1160.0",
-    "@aws-sdk/client-scheduler": "3.1160.0",
-    "@aws-sdk/client-secrets-manager": "3.1160.0",
+    "@aws-sdk/client-dynamodb": "3.1162.0",
+    "@aws-sdk/client-scheduler": "3.1162.0",
+    "@aws-sdk/client-secrets-manager": "3.1162.0",
     "commander": "15.0.0",
     "nodemailer": "10.3.1",
     "proper-lockfile": "4.1.2",
@@ -39,6 +39,6 @@
     "tsx": "4.23.15",
     "typescript": "6.0.3",
     "typescript-eslint": "8.72.1",
-    "vitest": "5.0.5"
+    "vitest": "5.1.0"
   }
 }
