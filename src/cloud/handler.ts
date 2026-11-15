@@ -65,7 +65,6 @@ export function createApp(options: AppOptions) {
         return { jobId: id, status: job.status };
       }
     }
-    // Ensure the recovery trigger exists before the first provider purchase can run.
     if (!terminal(job) || deliveriesPending(job)) await options.schedules.ensure(job);
     const result = await new Poller(options.store, await options.runtime()).run(id);
     if (!result) return { jobId: id, status: 'busy' };
@@ -109,7 +108,6 @@ export async function handler(event: unknown, context: Context) {
       };
     } })(event);
   } catch {
-    // Lambda errors are logged automatically. Keep credentials and request content out of them.
     throw new Error('Number Watcher invocation failed. Check the request format, saved job status, AWS permissions, and credential secret.');
   }
 }

@@ -107,7 +107,6 @@ for (const entry of entries) {
       persistedProgress: progress(restored), completedResumeMakesNoProviderCalls: result.status === 'succeeded',
       externalNotificationsSent: 0, providerMutations: 0 });
   } catch (error) {
-    // Provider bodies, credential sources, URLs, and account identifiers stay private.
     report.push({ provider: entry.type, status: 'failed', reason: error instanceof Error && !/https?:|Bearer|Basic/i.test(error.message) ? error.message : 'Read-only verification failed' });
     process.exitCode = 1;
   } finally { await rm(root, { recursive: true, force: true }); }

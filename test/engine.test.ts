@@ -178,7 +178,6 @@ describe('durable acquisition and notify jobs', () => {
     provider.search.mockImplementation(async () => { observed.push(clock.now() - start); return []; });
     const job = await store.add(config({ pollIntervalSeconds: interval, durationHours: hours }));
     const runner = runWith([provider]);
-    // Exercise the scheduler with virtual time; cancellation-aware waiting has separate coverage.
     vi.spyOn(runner, 'pause').mockImplementation(async (_job, ms) => { clock.time += ms; });
     const result = await runner.run(job.id);
     expect(result.status).toBe('expired');

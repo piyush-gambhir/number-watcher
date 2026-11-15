@@ -11,7 +11,6 @@ export class Telnyx implements Provider {
   constructor(readonly config: Extract<ProviderConfig, { type: 'telnyx' }>, env: Env, readonly http = new Http()) {
     const key = secret(env, config.apiKeyEnv);
     this.headers = { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
-    // Pin the key across restarts without persisting the credential itself.
     this.credentialIdentity = `key-sha256:${createHash('sha256').update(key).digest('hex')}`;
   }
   get(path: string): Promise<Json> { return this.http.request(`${this.base}${path}`, this.headers); }
