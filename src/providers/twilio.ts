@@ -62,7 +62,6 @@ export class Twilio implements Provider {
     return result.available_phone_numbers.map((n: Json) => ({
       provider: this.type, phoneNumber: n.phone_number, country: n.iso_country, numberType: 'local',
       capabilities: (['voice', 'sms', 'mms'] as Capability[]).filter(c => {
-        // Twilio's REST payload uses SMS/MMS, while some clients normalize keys.
         const key = c === 'voice' ? 'voice' : c.toUpperCase();
         return (n.capabilities?.[key] ?? n.capabilities?.[c]) === true;
       })

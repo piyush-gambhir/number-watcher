@@ -1,7 +1,6 @@
 import type { Clock } from './types.js';
 import { systemClock } from './types.js';
 
-// Provider JSON is validated and normalized at each adapter boundary.
 export type Json = Record<string, any>;
 export type Fetch = typeof globalThis.fetch;
 export class ApiError extends Error {

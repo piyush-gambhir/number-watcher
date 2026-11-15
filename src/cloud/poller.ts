@@ -14,7 +14,6 @@ export interface PollerOptions {
   remainingMs?: () => number;
 }
 
-// One bounded round. Pending activation and delivery retries continue on a later invocation.
 export class Poller {
   readonly now: () => number;
   constructor(readonly store: CloudStore, readonly options: PollerOptions) { this.now = options.now ?? Date.now; }
@@ -137,7 +136,6 @@ export class Poller {
         }
       }
     } catch {
-      // Never include provider credentials, request payloads, or raw exception text in cloud logs/events.
       if (this.hasTime()) {
         job.error = 'Provider operation or checkpoint failed; inspect saved progress before resuming';
         await this.finish(session, unresolved(job) ? 'needs_attention' : 'failed');

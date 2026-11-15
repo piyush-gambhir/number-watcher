@@ -26,7 +26,6 @@ resource "aws_dynamodb_table" "jobs" {
     attribute_name = "ttl"
     enabled        = true
   }
-  # Only leases have a TTL. Purchase checkpoints must survive job expiry.
   lifecycle { prevent_destroy = true }
 }
 

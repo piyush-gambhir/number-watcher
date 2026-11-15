@@ -84,7 +84,6 @@ export class DynamoStore implements CloudStore {
       const state = await this.read(id);
       return await work({ job: state.job,
         save: async () => {
-          // The lease and revision fence every checkpoint, including the purchase intent.
           await this.client.send(new TransactWriteItemsCommand({ ClientRequestToken: randomUUID(), TransactItems: [
             { ConditionCheck: { TableName: this.table, Key: key, ConditionExpression: 'leaseToken = :token AND expiresAt > :now',
               ExpressionAttributeValues: { ':token': { S: token }, ':now': { N: String(Math.floor(this.now() / 1000)) } } } },
@@ -100,7 +99,7 @@ export class DynamoStore implements CloudStore {
       try {
         await this.client.send(new DeleteItemCommand({ TableName: this.table, Key: key,
           ConditionExpression: 'leaseToken = :token', ExpressionAttributeValues: { ':token': { S: token } } }));
-      } catch { /* A failed release expires after the Lambda timeout plus a safety margin. */ }
+      } catch {                                                                               }
     }
   }
 }
