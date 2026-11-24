@@ -24,7 +24,7 @@ A job uses one account per selected provider. Numbers acquired from different pr
 | `quantity` | Yes | Integer from 1 to 100. One shared target across all listed area codes and providers. |
 | `providers` | Yes | Nonempty ordered list of distinct provider entries, initially `twilio` and/or `telnyx`. List order expresses preference. |
 | `pollIntervalSeconds` | No | Defaults to 300; integer from 300 to 3600. |
-| `durationHours` | No | Defaults to 24; positive integer, maximum 24. |
+| `durationHours` | No | Defaults to 24; positive integer, maximum 720 (30 days) for watching scarce inventory. |
 | `budget` | Purchase: yes | USD price limits described below. Optional in notify mode. |
 | `notifications` | Notify: yes | A nonempty `channels` list selecting Slack, email, and/or signed generic webhooks. Optional in purchase mode. Channel IDs must be unique. Console output is always available. |
 
@@ -161,7 +161,7 @@ Use a persistent state directory with an exclusive single-worker lock, atomicall
 
 Persist resolved non-secret configuration and its fingerprint, provider account identities, execution ID, timestamps, round results, per-number intents/statuses, price snapshots, provider resource/order IDs, errors, and outbox records. Credentials and resolved notification secrets/destinations stay out of state. Resume requires the referenced environment variables. Verify the recorded Twilio account SID and Telnyx credential fingerprint before continuing. Never delete or overwrite a prior job to start another.
 
-Job statuses: `queued`, `running`, `succeeded`, `expired`, `cancelled`, `failed`, `needs_attention`. Progress phase is separately `preflight`, `searching`, `ordering`, `waiting_activation`, `configuring`, `reconciling`, or `notifying`. Per-number records retain pending/owned/configured/uncertain state. `expired` may contain partially fulfilled quantity; `needs_attention` takes precedence when an external write remains uncertain or an accepted order remains pending at shutdown.
+Job statuses: `queued`, `running`, `succeeded`, `expired`, `cancelled`, `failed`, `needs_attention`. Progress phase is separately `preflight`, `searching`, `ordering`, `waiting_activation`, `configuring`, `reconciling`, or `notifying`. Per-number records retain pending/owned/configured/uncertain state. `expired` may contain partially fulfilled quantity; `needs_attention` takes precedence when an external write remains uncertain or an accepted order remains pending when the run ends, except after SIGINT/SIGTERM, which leaves the job `running` for `resume` to reconcile.
 
 Available commands:
 
@@ -184,11 +184,11 @@ number-watcher retry-notifications --job <id>
 
 `check --offline` only validates JSON. Normal `check` validates notification settings/environment variables and performs live read-only provider searches/resource/pricing checks; it sends no notifications and makes no provider mutations. SMTP connectivity and actual email delivery are not tested by this command.
 
-`start` adds and immediately runs a new request. `mode=purchase` plus `start`, or queuing that explicit mode for a worker, authorizes the configured quantity without interactive prompts. `run`/`resume` execute the saved request, reconciling unfinished writes first and preserving its original deadline. Failed preflight can be repaired and explicitly resumed. Successful, expired, and fully cancelled jobs never reacquire numbers on resume.
+`start` adds and immediately runs a new request; it refuses while another job is `running` or has an unresolved write. `mode=purchase` plus `start`, or queuing that explicit mode for a worker, authorizes the configured quantity without interactive prompts. `run`/`resume` execute the saved request, reconciling unfinished writes first and preserving its original deadline. Failed preflight can be repaired and explicitly resumed. Successful, expired, and fully cancelled jobs never reacquire numbers on resume.
 
-`cancel` writes a durable cancellation request. SIGINT/SIGTERM also request graceful cancellation. An unstarted cancelled job can be processed without provider or notification credentials; its cancellation event remains in the outbox for later delivery. `retry-notifications` only drains saved events and never runs acquisition. Starting a genuinely new acquisition requires a new `add` or `start` execution.
+`cancel` writes a durable cancellation request. SIGINT/SIGTERM stop processing after the current step without cancelling; the job stays `running` and `worker` or `resume` continues it with its original deadline. An unstarted cancelled job can be processed without provider or notification credentials; its cancellation event remains in the outbox for later delivery. `retry-notifications` only drains saved events and never runs acquisition. Starting a genuinely new acquisition requires a new `add` or `start` execution.
 
-Commands return JSON on stdout and progress on stderr. Run/resume exit codes are 0 for success, 2 for failure/attention, 3 for expiry, and 4 for cancellation; command/configuration errors use 1. Never conflate a degraded search with no inventory, an accepted order with a usable number, or failed notification delivery with failed acquisition.
+Commands return JSON on stdout and progress on stderr. Run/resume exit codes are 0 for success, 2 for failure/attention, 3 for expiry, 4 for cancellation, and 5 when SIGINT/SIGTERM interrupted the run and the job is still `running`; command/configuration errors use 1. A job whose deadline has passed and has no unresolved write finishes as `expired` before any provider call. Terminal alerts are not repeated while the latest outbox event already reports the same status. Never conflate a degraded search with no inventory, an accepted order with a usable number, or failed notification delivery with failed acquisition.
 
 ## 9. Provider extension boundary
 

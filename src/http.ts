@@ -14,7 +14,7 @@ export class Http {
     const attempts = method === 'GET' ? 3 : 1;
     for (let attempt = 0; attempt < attempts; attempt++) {
       try {
-        const response = await this.fetch(url, { method, headers, body, signal: AbortSignal.timeout(15_000), redirect: 'error' });
+        const response = await this.fetch(url, { method, headers, body, signal: AbortSignal.timeout(30_000), redirect: 'error' });
         let data: Json;
         try { data = await response.json() as Json; }
         catch { throw new ApiError(response.status, 'invalid_json', method); }

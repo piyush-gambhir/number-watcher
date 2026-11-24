@@ -45,7 +45,7 @@ export const configSchema = z.object({
   requiredCapabilities: z.array(z.enum(['voice', 'sms', 'mms'])).min(1),
   quantity: z.number().int().min(1).max(100),
   pollIntervalSeconds: z.number().int().min(300).max(3600).default(300),
-  durationHours: z.number().int().min(1).max(24).default(24),
+  durationHours: z.number().int().min(1).max(720).default(24),
   providers: z.array(z.discriminatedUnion('type', [twilio, telnyx])).min(1).max(2),
   budget: z.object({ currency: z.literal('USD'), maxMonthlyPerNumber: money, maxOneTimeFeePerNumber: money.optional() }).strict().optional(),
   notifications: z.object({ channels: z.array(channel).min(1) }).strict().optional()

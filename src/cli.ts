@@ -5,7 +5,7 @@ import { Runner, searchRound } from './engine.js';
 import { Notifications } from './notifications/index.js';
 import { createProviders } from './providers/index.js';
 import { Store } from './store.js';
-import { progress, systemClock, type Job } from './types.js';
+import { progress, systemClock, unresolved, type Job } from './types.js';
 
 const program = new Command().name('number-watcher').description('Watch and acquire phone numbers on Twilio and Telnyx')
   .option('--state-dir <path>', 'Persistent state directory', '.state')
@@ -25,7 +25,8 @@ const runner = () => new Runner(store(), {
 });
 function result(job: Job): void {
   print({ ...job, progress: progress(job) });
-  process.exitCode = job.status === 'succeeded' ? 0 : job.status === 'expired' ? 3 : job.status === 'cancelled' ? 4 : 2;
+  if (job.status === 'running') process.stderr.write(`Job ${job.id} was interrupted and is still running; continue it with resume --job ${job.id} or stop it with cancel --job ${job.id}\n`);
+  process.exitCode = job.status === 'succeeded' ? 0 : job.status === 'expired' ? 3 : job.status === 'cancelled' ? 4 : job.status === 'running' ? 5 : 2;
 }
 
 program.command('check').requiredOption('--config <path>').option('--offline', 'Validate configuration without network calls or credentials')
@@ -44,7 +45,10 @@ program.command('add').requiredOption('--config <path>').description('Queue a va
   });
 program.command('start').requiredOption('--config <path>').description('Add and immediately run a request in its explicit configured mode')
   .action(async options => {
-    const job = await store().add(await readConfig(options.config));
+    const config = await readConfig(options.config);
+    const busy = (await store().list()).find(j => unresolved(j) || j.status === 'running');
+    if (busy) throw new Error(`Job ${busy.id} is still ${busy.status}; resume or cancel it before starting another request`);
+    const job = await store().add(config);
     process.stderr.write(`Job ${job.id}\n`);
     result(await runner().run(job.id));
   });

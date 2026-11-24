@@ -70,6 +70,15 @@ export class Runner {
   readonly clock: Clock;
   constructor(readonly store: Store, readonly options: RunnerOptions) { this.clock = options.clock ?? systemClock; }
   async cancelled(job: Job): Promise<boolean> { return !!this.options.stopped?.() || this.store.cancelled(job.id); }
+  async interrupted(job: Job): Promise<boolean> { return !!this.options.stopped?.() && !await this.store.cancelled(job.id); }
+  async interrupt(job: Job): Promise<Job> {
+    job.phase = 'idle';
+    await this.store.save(job);
+    return job;
+  }
+  async stall(job: Job, notifier: DeliveryService): Promise<Job> {
+    return await this.interrupted(job) ? this.interrupt(job) : this.finish(job, 'needs_attention', notifier);
+  }
   async pause(job: Job, ms: number): Promise<void> {
     const until = this.clock.now() + ms;
     while (this.clock.now() < until && !await this.cancelled(job)) await this.clock.sleep(Math.min(1000, until - this.clock.now()));
@@ -89,13 +98,14 @@ export class Runner {
       if (['succeeded', 'expired', 'cancelled'].includes(job.status) && !unresolved(job)) return job;
       const other = (await this.store.list()).find(j => j.id !== id && (unresolved(j) || j.status === 'running'));
       if (other) throw new Error(`Reconcile or resume job ${other.id} before processing another request`);
-      if (await this.cancelled(job) && !unresolved(job)) {
+      if (await this.store.cancelled(job.id) && !unresolved(job)) {
         job.status = 'cancelled';
         job.phase = 'idle';
         if (!job.outbox.some(e => e.event.type === 'job.cancelled')) queueEvent(job, 'job.cancelled', this.clock.now());
         await this.store.save(job);
         return job;
       }
+      if (await this.interrupted(job)) return job;
       let notifier: DeliveryService;
       try { notifier = this.options.notifications(job.config); }
       catch {
@@ -110,6 +120,7 @@ export class Runner {
         await notifier.deliver(job, () => this.store.save(job), true);
         return await this.finish(job, delivered(job, 'availability.found') ? 'succeeded' : 'needs_attention', notifier);
       }
+      if (job.deadline && this.clock.now() >= Date.parse(job.deadline) && !unresolved(job)) return await this.finish(job, 'expired', notifier);
       try {
         if (fingerprint(job.config) !== job.fingerprint) throw new Error('Saved configuration fingerprint mismatch');
         const providers = this.options.providers(job.config);
@@ -128,14 +139,17 @@ export class Runner {
         for (const acquisition of job.acquisitions) {
           if (!['configured', 'rejected'].includes(acquisition.state)) {
             const provider = providers.find(p => p.type === acquisition.candidate.provider)!;
-            if (!await this.settle(job, acquisition, provider, notifier, recoveryUntil)) return await this.finish(job, 'needs_attention', notifier);
+            if (!await this.settle(job, acquisition, provider, notifier, recoveryUntil)) return await this.stall(job, notifier);
           } else if (acquisition.state === 'configured' && !acquisition.eventQueued) {
             this.acquiredEvent(job, acquisition);
             await this.store.save(job);
           }
         }
         while (true) {
-          if (await this.cancelled(job)) return await this.finish(job, unresolved(job) ? 'needs_attention' : 'cancelled', notifier);
+          if (await this.cancelled(job)) {
+            if (await this.interrupted(job)) return await this.interrupt(job);
+            return await this.finish(job, unresolved(job) ? 'needs_attention' : 'cancelled', notifier);
+          }
           if (job.config.mode === 'purchase' && progress(job).configured === job.config.quantity) return await this.finish(job, 'succeeded', notifier);
           if (this.clock.now() >= deadline) return await this.finish(job, 'expired', notifier);
           const next = Date.parse(job.nextPollAt!);
@@ -188,7 +202,7 @@ export class Runner {
               catch { outcome = { ...acquisition, state: 'unknown', error: 'Purchase adapter did not return a conclusive outcome' }; }
               Object.assign(acquisition, outcome);
               await this.store.save(job);
-              if (!await this.settle(job, acquisition, provider, notifier, recoveryUntil)) return await this.finish(job, 'needs_attention', notifier);
+              if (!await this.settle(job, acquisition, provider, notifier, recoveryUntil)) return await this.stall(job, notifier);
             }
           }
           await notifier.deliver(job, () => this.store.save(job), false, recoveryUntil);
@@ -248,7 +262,7 @@ export class Runner {
     job.status = status;
     job.phase = 'idle';
     const event = status === 'succeeded' ? 'job.completed' : `job.${status}`;
-    if (!job.outbox.some(e => e.event.type === event)) queueEvent(job, event, this.clock.now(), {
+    if (job.outbox.at(-1)?.event.type !== event) queueEvent(job, event, this.clock.now(), {
       status, error: job.error, acquisitions: job.acquisitions, lastRound: job.lastRound
     });
     await this.store.save(job);

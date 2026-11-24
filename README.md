@@ -4,7 +4,7 @@ A CLI and background worker that watches US local phone-number inventory on Twil
 
 The application stays on TypeScript and Node.js. Direct dependencies use exact versions, and `package-lock.json` records the resolved dependency tree for `npm ci`. Dependencies were checked against npm's latest stable releases on October 25, 2026. TypeScript remains at 6.0.3 because the latest `typescript-eslint` release supports TypeScript below 6.1; TypeScript 7 requires a compatible lint-tooling release before upgrading.
 
-Requests specify area codes, required capabilities, quantity, provider preference, duration, and an explicit `notify` or `purchase` mode. Quantity is shared across providers and area codes. The default interval is five minutes, for up to 24 hours.
+Requests specify area codes, required capabilities, quantity, provider preference, duration, and an explicit `notify` or `purchase` mode. Quantity is shared across providers and area codes. The default interval is five minutes, for 24 hours by default and up to 30 days (`durationHours` up to 720) when inventory is scarce.
 
 ## Setup
 
@@ -146,7 +146,7 @@ node dist/cli.js --env-file .env resume --job <job-id>
 node dist/cli.js --env-file .env retry-notifications --job <job-id>
 ```
 
-Cancellation stops new purchases and preserves any in-flight order or owned number. SIGINT/SIGTERM also stop the worker gracefully. Expiry never releases numbers or cancels provider orders.
+Cancellation stops new purchases and preserves any in-flight order or owned number. SIGINT/SIGTERM stop the worker gracefully without cancelling: the job stays `running` and the next `worker` or `resume` continues it with the original deadline, so a reboot or supervisor restart does not end a long watch. An interrupted run exits with code 5, and `start` refuses while another job is still running or unresolved. Expiry never releases numbers or cancels provider orders.
 
 Resume retains the original deadline and quantity and reconciles unfinished writes before doing anything new. Successful, expired, and fully cancelled jobs do not purchase again. Failed preflight can be fixed and explicitly resumed. A job with an unresolved order blocks later requests until reconciled.
 

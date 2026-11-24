@@ -118,14 +118,71 @@ describe('durable acquisition and notify jobs', () => {
     expect((await searchRound(config(), [twilio, telnyx])).candidates).toEqual([]);
   });
   it('stops before a second purchase when cancelled between acquisitions', async () => {
-    let cancelled = false;
     const provider = new FakeProvider('twilio', [candidate(), candidate('twilio', '+12105550102')]);
-    provider.configure.mockImplementation(async () => { cancelled = true; });
     const job = await store.add(config({ quantity: 2 }));
-    const result = await runWith([provider], () => cancelled).run(job.id);
+    provider.configure.mockImplementation(async () => { await store.cancel(job.id); });
+    const result = await runWith([provider]).run(job.id);
     expect(result.status).toBe('cancelled');
     expect(progress(result).configured).toBe(1);
     expect(provider.acquire).toHaveBeenCalledTimes(1);
+  });
+  it('leaves a signalled job resumable instead of cancelling it', async () => {
+    let stopped = false;
+    const provider = new FakeProvider('twilio', [candidate(), candidate('twilio', '+12105550102')]);
+    provider.configure.mockImplementationOnce(async () => { stopped = true; });
+    const job = await store.add(config({ quantity: 2 }));
+    const interrupted = await runWith([provider], () => stopped).run(job.id);
+    expect(interrupted.status).toBe('running');
+    expect(progress(interrupted).configured).toBe(1);
+    expect(interrupted.outbox.some(e => e.event.type === 'job.cancelled')).toBe(false);
+    const resumed = await runWith([provider]).run(job.id);
+    expect(resumed.status).toBe('succeeded');
+    expect(resumed.deadline).toBe(interrupted.deadline);
+    expect(provider.acquire).toHaveBeenCalledTimes(2);
+  });
+  it('keeps an uncertain purchase resumable when a signal arrives during reconciliation', async () => {
+    let stopped = false;
+    const provider = new FakeProvider('twilio', [candidate()]);
+    provider.acquire.mockImplementation(async (_c, a) => { stopped = true; return { ...a, state: 'unknown' }; });
+    const job = await store.add(config());
+    const interrupted = await runWith([provider], () => stopped).run(job.id);
+    expect(interrupted.status).toBe('running');
+    expect(interrupted.outbox.some(e => e.event.type === 'job.needs_attention')).toBe(false);
+    provider.reconcile.mockImplementation(async (_c, a) => ({ ...a, state: 'owned', resourceId: 'number-1' }));
+    const resumed = await runWith([provider]).run(job.id);
+    expect(resumed.status).toBe('succeeded');
+    expect(provider.acquire).toHaveBeenCalledTimes(1);
+  });
+  it('does not start the deadline when a signal arrives before the run begins', async () => {
+    const provider = new FakeProvider('twilio', [candidate()]);
+    const job = await store.add(config());
+    const result = await runWith([provider], () => true).run(job.id);
+    expect(result.status).toBe('queued');
+    expect(result.deadline).toBeUndefined();
+    expect(provider.preflight).not.toHaveBeenCalled();
+  });
+  it('expires a stalled job past its deadline without calling providers', async () => {
+    const provider = new FakeProvider('twilio');
+    const job = await store.add(config());
+    job.status = 'failed';
+    job.startedAt = new Date(clock.now() - 2 * 3600_000).toISOString();
+    job.deadline = new Date(clock.now() - 3600_000).toISOString();
+    await store.save(job);
+    const result = await runWith([provider]).run(job.id);
+    expect(result.status).toBe('expired');
+    expect(provider.preflight).not.toHaveBeenCalled();
+  });
+  it('alerts again when a job needs attention after recovering, but not on repeated restarts', async () => {
+    const provider = new FakeProvider('twilio', [candidate(), candidate('twilio', '+12105550102')]);
+    provider.configure.mockRejectedValueOnce(new Error('a')).mockRejectedValueOnce(new Error('b')).mockRejectedValueOnce(new Error('c'));
+    const job = await store.add(config({ quantity: 2 }));
+    const count = (j: { outbox: { event: { type: string } }[] }) => j.outbox.filter(e => e.event.type === 'job.needs_attention').length;
+    expect(count(await runWith([provider]).run(job.id))).toBe(1);
+    provider.configure.mockRejectedValueOnce(new Error('d')).mockRejectedValueOnce(new Error('e')).mockRejectedValueOnce(new Error('f'));
+    expect(count(await runWith([provider]).run(job.id))).toBe(1);
+    provider.configure.mockResolvedValueOnce(undefined);
+    provider.configure.mockRejectedValueOnce(new Error('g')).mockRejectedValueOnce(new Error('h')).mockRejectedValueOnce(new Error('i'));
+    expect(count(await runWith([provider]).run(job.id))).toBe(2);
   });
   it('cannot process another request while an earlier write is unresolved', async () => {
     const existing = await store.add(config());
