@@ -14,7 +14,7 @@ export class EventBridgeSchedules implements Schedules {
     const recoveryMs = Math.max(1800_000, seconds * 6000 + 600_000);
     try {
       await this.client.send(new CreateScheduleCommand({ Name: this.name(job.id), GroupName: this.group,
-        ClientToken: randomUUID(), ScheduleExpression: `rate(${minutes} minutes)`, FlexibleTimeWindow: { Mode: 'OFF' },
+        ClientToken: randomUUID(), ScheduleExpression: `rate(${minutes} ${minutes === 1 ? 'minute' : 'minutes'})`, FlexibleTimeWindow: { Mode: 'OFF' },
         StartDate: new Date(this.now() + seconds * 1000),
         EndDate: new Date(Math.max(Date.parse(job.deadline!), this.now()) + recoveryMs), ActionAfterCompletion: 'DELETE',
         Target: { Arn: this.functionArn, RoleArn: this.roleArn, Input: JSON.stringify({ command: 'poll', jobId: job.id }),

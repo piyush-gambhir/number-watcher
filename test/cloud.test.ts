@@ -258,6 +258,8 @@ describe('AWS persistence and schedules', () => {
     await new EventBridgeSchedules('group', 'function', 'role', 'dlq', { send } as unknown as SchedulerClient, now).ensure(job);
     const input = send.mock.calls[0][0].input;
     expect(input.ScheduleExpression).toBe('rate(5 minutes)');
+    await new EventBridgeSchedules('group', 'function', 'role', 'dlq', { send } as unknown as SchedulerClient, now).ensure(newJob(randomUUID(), config({ pollIntervalSeconds: 60 }), now()));
+    expect(send.mock.calls[1][0].input.ScheduleExpression).toBe('rate(1 minute)');
     expect(input.ActionAfterCompletion).toBe('DELETE');
     expect(input.EndDate.getTime()).toBeGreaterThan(Date.parse(job.deadline!) + 1800_000);
     expect(JSON.parse(input.Target.Input)).toEqual({ command: 'poll', jobId: job.id });
