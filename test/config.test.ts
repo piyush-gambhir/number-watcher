@@ -11,12 +11,15 @@ describe('request validation and matching', () => {
   it.each([
     { areaCodes: [] }, { areaCodes: ['210', '210'] }, { areaCodes: ['110'] }, { quantity: 0 }, { quantity: 1.5 },
     { mode: 'automatic' }, { requiredCapabilities: ['mms'] }, { mode: 'notify' }, { budget: undefined }, { typo: 'value' },
-    { durationHours: 0 }, { durationHours: 721 }
+    { durationHours: 0 }, { durationHours: 721 }, { pollIntervalSeconds: 59 }, { pollIntervalSeconds: 3601 }
   ])('rejects unsafe or incomplete input: %j', override => {
     expect(() => config(override)).toThrow();
   });
   it('accepts multi-day watches up to 30 days', () => {
     expect(config({ durationHours: 720 }).durationHours).toBe(720);
+  });
+  it('accepts a one-minute poll for scarce inventory', () => {
+    expect(config({ pollIntervalSeconds: 60 }).pollIntervalSeconds).toBe(60);
   });
   it('requires provider routes only for purchase and selected capabilities', () => {
     const provider = { type: 'twilio', accountSid: `AC${'0'.repeat(32)}`, apiKeySidEnv: 'KEY', apiKeySecretEnv: 'SECRET' };

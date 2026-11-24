@@ -23,7 +23,7 @@ A job uses one account per selected provider. Numbers acquired from different pr
 | `requiredCapabilities` | Yes | Nonempty unique list from `voice`, `sms`, `mms`. Every selected capability is required. In v1, `mms` also requires `sms` in this list. |
 | `quantity` | Yes | Integer from 1 to 100. One shared target across all listed area codes and providers. |
 | `providers` | Yes | Nonempty ordered list of distinct provider entries, initially `twilio` and/or `telnyx`. List order expresses preference. |
-| `pollIntervalSeconds` | No | Defaults to 300; integer from 300 to 3600. |
+| `pollIntervalSeconds` | No | Defaults to 300; integer from 60 to 3600. |
 | `durationHours` | No | Defaults to 24; positive integer, maximum 720 (30 days) for watching scarce inventory. |
 | `budget` | Purchase: yes | USD price limits described below. Optional in notify mode. |
 | `notifications` | Notify: yes | A nonempty `channels` list selecting Slack, email, and/or signed generic webhooks. Optional in purchase mode. Channel IDs must be unique. Console output is always available. |
@@ -232,7 +232,7 @@ Example requests use area codes 210/726 and quantity two as placeholders. Copy a
 
 The [Terraform guide](infra/terraform/README.md) defines setup, commands, costs, and deployment limits. The cloud runtime runs one bounded round per invocation, with no sleeping between polls. It uses Node.js 24, a 120-second timeout, a 180-second conditional lease, transactional revision checks, and compressed DynamoDB checkpoints. Only lease records have TTL; job records persist.
 
-Cloud `submit` takes a caller-generated UUID and the same immutable configuration. Repeated submission of that UUID is idempotent and cannot reset progress; a different configuration for that UUID is rejected. A new UUID authorizes a separate quantity. Duration starts at durable creation, before remote preflight. A recovery schedule must exist before any provider purchase. AWS intervals must be whole minutes, from five to 60 minutes. Scheduler uses approximate minute-level timing.
+Cloud `submit` takes a caller-generated UUID and the same immutable configuration. Repeated submission of that UUID is idempotent and cannot reset progress; a different configuration for that UUID is rejected. A new UUID authorizes a separate quantity. Duration starts at durable creation, before remote preflight. A recovery schedule must exist before any provider purchase. AWS intervals must be whole minutes, from one to 60 minutes. Scheduler uses approximate minute-level timing.
 
 Cloud commands are `submit`, `status`, `poll`, `cancel`, `resume`, and `retry-notifications`, invoked through IAM-authorized Lambda calls. Status is by job ID. Local and cloud state are separate. Uncertain purchases block further acquisitions in that job; separately submitted jobs are independent. Every new invocation reconciles saved unfinished acquisitions before another purchase. Completed jobs do not purchase again.
 

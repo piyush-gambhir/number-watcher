@@ -226,6 +226,7 @@ describe('durable acquisition and notify jobs', () => {
     expect(notifications).not.toHaveBeenCalled();
   });
   it.each([
+    { interval: 60, hours: 2, rounds: 120 },
     { interval: 300, hours: 24, rounds: 288 },
     { interval: 600, hours: 1, rounds: 6 }
   ])('polls immediately and on fixed slots until expiry: %j', async ({ interval, hours, rounds }) => {
