@@ -4,7 +4,7 @@ A CLI and background worker that watches US local phone-number inventory on Twil
 
 The application stays on TypeScript and Node.js. Direct dependencies use exact versions, and `package-lock.json` records the resolved dependency tree for `npm ci`. Dependencies were checked against npm's latest stable releases on October 25, 2026. TypeScript remains at 6.0.3 because the latest `typescript-eslint` release supports TypeScript below 6.1; TypeScript 7 requires a compatible lint-tooling release before upgrading.
 
-Requests specify area codes, required capabilities, quantity, provider preference, duration, and an explicit `notify` or `purchase` mode. Quantity is shared across providers and area codes. The default interval is five minutes, for up to 24 hours.
+Requests specify area codes, required capabilities, quantity, provider preference, duration, and an explicit `notify` or `purchase` mode. Quantity is shared across providers and area codes. The default interval is five minutes, for 24 hours by default and up to 30 days (`durationHours` up to 720) when inventory is scarce.
 
 ## Setup
 

@@ -24,7 +24,7 @@ A job uses one account per selected provider. Numbers acquired from different pr
 | `quantity` | Yes | Integer from 1 to 100. One shared target across all listed area codes and providers. |
 | `providers` | Yes | Nonempty ordered list of distinct provider entries, initially `twilio` and/or `telnyx`. List order expresses preference. |
 | `pollIntervalSeconds` | No | Defaults to 300; integer from 300 to 3600. |
-| `durationHours` | No | Defaults to 24; positive integer, maximum 24. |
+| `durationHours` | No | Defaults to 24; positive integer, maximum 720 (30 days) for watching scarce inventory. |
 | `budget` | Purchase: yes | USD price limits described below. Optional in notify mode. |
 | `notifications` | Notify: yes | A nonempty `channels` list selecting Slack, email, and/or signed generic webhooks. Optional in purchase mode. Channel IDs must be unique. Console output is always available. |
 
