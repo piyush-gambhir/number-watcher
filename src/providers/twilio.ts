@@ -51,8 +51,9 @@ export class Twilio implements Provider {
     }
     return account.sid;
   }
-  async ownedNumbers(): Promise<string[]> {
-    return (await this.pages(`${this.base}/IncomingPhoneNumbers.json?PageSize=1000`, 'incoming_phone_numbers')).map(n => n.phone_number);
+  async ownedNumbers(areaCodes: string[]): Promise<string[]> {
+    const lists = await Promise.all(areaCodes.map(code => this.pages(`${this.base}/IncomingPhoneNumbers.json?${new URLSearchParams({ PhoneNumber: `+1${code}`, PageSize: '1000' })}`, 'incoming_phone_numbers')));
+    return lists.flat().map(n => n.phone_number).filter(n => areaCodes.includes(String(n).slice(2, 5)));
   }
   async search(config: Config, areaCode: string, limit: number): Promise<Candidate[]> {
     const query = new URLSearchParams({ AreaCode: areaCode, PageSize: String(limit) });

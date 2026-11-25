@@ -33,7 +33,7 @@ export async function searchRound(config: Config, providers: Provider[]): Promis
     let disabled = false;
     let owned: string[] = [];
     try {
-      owned = await provider.ownedNumbers();
+      owned = await provider.ownedNumbers(config.areaCodes);
       const searches = await Promise.allSettled(config.areaCodes.map(code => provider.search(config, code, config.quantity)));
       for (const [index, result] of searches.entries()) {
         if (result.status === 'fulfilled') candidates.push(...result.value);
@@ -103,6 +103,10 @@ export class Runner {
         job.phase = 'idle';
         if (!job.outbox.some(e => e.event.type === 'job.cancelled')) queueEvent(job, 'job.cancelled', this.clock.now());
         await this.store.save(job);
+        if (job.startedAt) {
+          try { await this.options.notifications(job.config).deliver(job, () => this.store.save(job)); }
+          catch { return job; }
+        }
         return job;
       }
       if (await this.interrupted(job)) return job;
@@ -112,7 +116,7 @@ export class Runner {
         job.error = 'Notification configuration is invalid or credentials are missing';
         job.status = unresolved(job) ? 'needs_attention' : 'failed';
         job.phase = 'idle';
-        queueEvent(job, `job.${job.status}`, this.clock.now(), { error: job.error });
+        if (job.outbox.at(-1)?.event.type !== `job.${job.status}`) queueEvent(job, `job.${job.status}`, this.clock.now(), { error: job.error });
         await this.store.save(job);
         return job;
       }
@@ -125,7 +129,7 @@ export class Runner {
         if (fingerprint(job.config) !== job.fingerprint) throw new Error('Saved configuration fingerprint mismatch');
         const providers = this.options.providers(job.config);
         await this.preflight(job, providers);
-        job.disabledProviders = [];
+        const disabled = new Set<Provider['type']>();
         if (!job.startedAt) {
           job.startedAt = new Date(this.clock.now()).toISOString();
           job.deadline = new Date(this.clock.now() + job.config.durationHours * 3600_000).toISOString();
@@ -154,24 +158,27 @@ export class Runner {
           if (this.clock.now() >= deadline) return await this.finish(job, 'expired', notifier);
           const next = Date.parse(job.nextPollAt!);
           if (next > this.clock.now()) { await this.pause(job, Math.min(next, deadline) - this.clock.now()); continue; }
+          const roundStart = this.clock.now();
           job.phase = 'searching';
           await this.store.save(job);
-          const active = providers.filter(p => !job.disabledProviders.includes(p.type));
+          const active = providers.filter(p => !disabled.has(p.type));
           const round = await searchRound(job.config, active);
           const already = new Set(occupied(job).map(a => a.candidate.phoneNumber));
           round.candidates = round.candidates.filter(c => !already.has(c.phoneNumber));
           job.lastRound = { observedAt: new Date(this.clock.now()).toISOString(), candidates: round.candidates, errors: round.errors, exclusions: round.exclusions };
           for (const type of round.disabled) {
+            disabled.add(type);
             if (!job.disabledProviders.includes(type)) {
               job.disabledProviders.push(type);
               queueEvent(job, 'provider.degraded', this.clock.now(), { provider: type });
             }
           }
+          job.disabledProviders = job.disabledProviders.filter(type => disabled.has(type) || round.errors.some(error => error.startsWith(type)));
           const interval = job.config.pollIntervalSeconds * 1000;
           job.nextPollAt = new Date(Date.parse(job.startedAt!) + (Math.floor((this.clock.now() - Date.parse(job.startedAt!)) / interval) + 1) * interval).toISOString();
           await this.store.save(job);
-          this.options.log?.({ jobId: job.id, matches: round.candidates.length, errors: round.errors, ...progress(job) });
-          if (!providers.some(p => !job.disabledProviders.includes(p.type))) throw new Error('No usable providers remain');
+          this.options.log?.({ jobId: job.id, matches: round.candidates.length, errors: round.errors, durationMs: this.clock.now() - roundStart, ...progress(job) });
+          if (providers.every(p => disabled.has(p.type))) throw new Error('No usable providers remain');
           if (await this.cancelled(job)) continue;
           if (this.clock.now() >= deadline) continue;
           if (job.config.mode === 'notify') {

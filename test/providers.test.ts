@@ -42,6 +42,23 @@ describe('provider API contracts', () => {
     expect(telnyx.searchParams.get('filter[best_effort]')).toBe('false');
     expect(fetch.mock.calls.every(c => (c[1]?.method ?? 'GET') === 'GET')).toBe(true);
   });
+  it('lists Twilio owned numbers per area code across pages and drops substring matches from other area codes', async () => {
+    const urls: URL[] = [];
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async input => {
+      const url = new URL(String(input));
+      urls.push(url);
+      if (url.searchParams.get('PhoneNumber') === '+1726') return json({ incoming_phone_numbers: [{ phone_number: '+17265550103' }, { phone_number: '+14151726000' }], next_page_uri: null });
+      if (url.searchParams.has('Page')) return json({ incoming_phone_numbers: [{ phone_number: '+12105550102' }], next_page_uri: null });
+      return json({ incoming_phone_numbers: [{ phone_number: '+12105550101' }, { phone_number: '+13121210000' }],
+        next_page_uri: `${url.pathname}?PhoneNumber=%2B1210&PageSize=1000&Page=1&PageToken=PA1` });
+    });
+    const provider = new Twilio(cfg.providers[0] as Extract<ProviderConfig, { type: 'twilio' }>, env, new Http(fetch));
+    expect(await provider.ownedNumbers(['210', '726'])).toEqual(['+12105550101', '+12105550102', '+17265550103']);
+    expect(urls.every(u => u.hostname === 'api.twilio.com' && u.pathname.endsWith('/IncomingPhoneNumbers.json'))).toBe(true);
+    expect(urls.map(u => `${u.searchParams}`).sort()).toEqual([
+      'PhoneNumber=%2B1210&PageSize=1000', 'PhoneNumber=%2B1210&PageSize=1000&Page=1&PageToken=PA1', 'PhoneNumber=%2B1726&PageSize=1000'
+    ]);
+  });
   it('does not automatically retry Twilio purchase writes after HTTP 500', async () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(json({ code: 20500 }, 500));
     const provider = new Twilio(cfg.providers[0] as Extract<ProviderConfig, { type: 'twilio' }>, env, new Http(fetch));
@@ -104,6 +121,7 @@ describe('worker through real adapters, persisted state, and notification transp
     let attached = false;
     let telnyxOrder: Record<string, unknown> | undefined;
     const notifications: Record<string, unknown>[] = [];
+    const twilioQueries: string[] = [];
     let purchases = 0;
     const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (input, options) => {
       const url = new URL(String(input));
@@ -120,7 +138,7 @@ describe('worker through real adapters, persisted state, and notification transp
       if (url.hostname === 'api.twilio.com') {
         if (url.pathname.includes('/AvailablePhoneNumbers/')) return json({ available_phone_numbers: [{ phone_number: '+12105550101', iso_country: 'US', capabilities: { voice: true, SMS: true, MMS: true } }] });
         if (url.pathname.endsWith('/IncomingPhoneNumbers.json')) {
-          if (method === 'GET') return json({ incoming_phone_numbers: twilioOwned ? [twilioOwned] : [] });
+          if (method === 'GET') { twilioQueries.push(`${url.searchParams}`); return json({ incoming_phone_numbers: twilioOwned ? [twilioOwned] : [] }); }
           purchases++;
           const fields = new URLSearchParams(options?.body as string);
           twilioOwned = { sid: 'PN-owned', account_sid: `AC${'0'.repeat(32)}`, phone_number: fields.get('PhoneNumber'), friendly_name: fields.get('FriendlyName'),
@@ -153,6 +171,7 @@ describe('worker through real adapters, persisted state, and notification transp
     const result = await runner.run(job.id);
     expect(result.status).toBe('succeeded');
     expect(purchases).toBe(2);
+    expect(new Set(twilioQueries)).toEqual(new Set(['PhoneNumber=%2B1210&PageSize=1000', ...(scenario === 'normal' ? [] : ['PhoneNumber=%2B12105550101'])]));
     expect(attached).toBe(true);
     expect(notifications.filter(e => e.type === 'number.acquired')).toHaveLength(2);
     expect(notifications.filter(e => e.type === 'job.completed')).toHaveLength(1);

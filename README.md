@@ -65,6 +65,40 @@ The worker processes one request at a time, in order, and waits for newly added 
 
 Keep the machine awake and run the worker under your existing process supervisor for unattended operation. All commands must use the same persistent state directory. Use `--state-dir /absolute/path` if starting commands from different working directories. Multiple machines or independent state roots are not coordinated.
 
+## Run a long watch under systemd
+
+For a multi-day watch, `add` the request once, then let systemd run `resume` for that job ID:
+
+```ini
+[Unit]
+Description=Number Watcher job <job-id>
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=number-watcher
+WorkingDirectory=/opt/number-watcher
+ExecStart=/usr/bin/node dist/cli.js --env-file .env --state-dir /var/lib/number-watcher resume --job <job-id>
+Restart=on-failure
+RestartSec=900
+SuccessExitStatus=3 4 5
+TimeoutStopSec=300
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`Restart=on-failure` restarts only on exit codes that are not listed as success:
+
+- `0`: succeeded. The unit stops.
+- `1`: command or configuration error, such as a held state lock or unreadable state. systemd restarts it after `RestartSec`.
+- `2`: failed or needs attention. systemd restarts it, and `resume` reruns preflight and reconciles any unfinished purchase. A job that keeps failing, such as one stuck reconciling a purchase, restarts every `RestartSec`, so keep it long and watch for `job.failed` and `job.needs_attention` alerts: after one, the unit may already be running the job again.
+- `3`: expired. Treated as success, so the unit stops.
+- `4`: cancelled. Treated as success, so the unit stops.
+- `5`: interrupted by SIGINT/SIGTERM, for example `systemctl stop` or a shutdown. The job stays `running`, and the next start resumes it with its original deadline.
+
+`TimeoutStopSec=300` gives the current step time to finish after SIGTERM, because in-flight provider requests are not aborted and a slow round can outlast systemd's default 90 seconds.
+
 ## Purchases
 
 Copy the purchase example and set `mode` to `purchase`. In addition to search settings, provide:

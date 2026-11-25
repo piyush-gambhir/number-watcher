@@ -30,7 +30,7 @@ export class FakeProvider implements Provider {
   }
   preflight = vi.fn(async (_config: Config) => `${this.type}-identity`);
   search = vi.fn(async (_config: Config, _area: string, _limit: number): Promise<Candidate[]> => []);
-  ownedNumbers = vi.fn(async (): Promise<string[]> => []);
+  ownedNumbers = vi.fn(async (_areaCodes: string[]): Promise<string[]> => []);
   quote = vi.fn(async (number: Candidate) => number.price!);
   acquire = vi.fn(async (_config: Config, acquisition: Acquisition): Promise<Acquisition> => ({ ...acquisition, state: 'owned', resourceId: 'number-1' }));
   reconcile = vi.fn(async (_config: Config, acquisition: Acquisition): Promise<Acquisition> => ({ ...acquisition, state: 'unknown' }));

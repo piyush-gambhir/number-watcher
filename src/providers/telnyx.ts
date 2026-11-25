@@ -41,7 +41,7 @@ export class Telnyx implements Provider {
     if (config.mode === 'purchase') await this.routes(config);
     return this.credentialIdentity;
   }
-  async ownedNumbers(): Promise<string[]> { return (await this.pages('/phone_numbers')).map(n => n.phone_number); }
+  async ownedNumbers(_areaCodes: string[]): Promise<string[]> { return (await this.pages('/phone_numbers')).map(n => n.phone_number); }
   price(number: Json): Price {
     return { currency: String(number.cost_information?.currency ?? ''),
       monthly: number.cost_information?.monthly_cost == null ? null : String(number.cost_information.monthly_cost),

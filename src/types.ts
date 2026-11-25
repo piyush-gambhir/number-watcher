@@ -33,7 +33,7 @@ export interface Provider {
   type: ProviderType;
   preflight(config: Config): Promise<string>;
   search(config: Config, areaCode: string, limit: number): Promise<Candidate[]>;
-  ownedNumbers(): Promise<string[]>;
+  ownedNumbers(areaCodes: string[]): Promise<string[]>;
   quote(candidate: Candidate): Promise<Price>;
   acquire(config: Config, acquisition: Acquisition): Promise<Acquisition>;
   reconcile(config: Config, acquisition: Acquisition): Promise<Acquisition>;
