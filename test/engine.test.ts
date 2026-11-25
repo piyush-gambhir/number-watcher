@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Runner, searchRound } from '../src/engine.js';
+import { ApiError } from '../src/http.js';
 import type { Store } from '../src/store.js';
-import { progress } from '../src/types.js';
+import { progress, type Job } from '../src/types.js';
 import { acknowledged, candidate, channels, config, FakeClock, FakeProvider, fixtureStore } from './helpers.js';
 
 describe('durable acquisition and notify jobs', () => {
@@ -116,6 +117,7 @@ describe('durable acquisition and notify jobs', () => {
     const telnyx = new FakeProvider('telnyx');
     telnyx.ownedNumbers.mockResolvedValue(['+12105550101']);
     expect((await searchRound(config(), [twilio, telnyx])).candidates).toEqual([]);
+    expect(telnyx.ownedNumbers).toHaveBeenCalledWith(['210']);
   });
   it('stops before a second purchase when cancelled between acquisitions', async () => {
     const provider = new FakeProvider('twilio', [candidate(), candidate('twilio', '+12105550102')]);
@@ -183,6 +185,57 @@ describe('durable acquisition and notify jobs', () => {
     provider.configure.mockResolvedValueOnce(undefined);
     provider.configure.mockRejectedValueOnce(new Error('g')).mockRejectedValueOnce(new Error('h')).mockRejectedValueOnce(new Error('i'));
     expect(count(await runWith([provider]).run(job.id))).toBe(2);
+  });
+  it('reports a persistent 403 once across resumes and again after the provider recovers', async () => {
+    const provider = new FakeProvider('twilio');
+    provider.search.mockRejectedValue(new ApiError(403, '20003', 'GET'));
+    const job = await store.add(config());
+    const count = (j: Job, type: string) => j.outbox.filter(e => e.event.type === type).length;
+    const run = () => {
+      const runner = runWith([provider]);
+      vi.spyOn(runner, 'pause').mockImplementation(async (_job, ms) => { clock.time += ms; });
+      return runner.run(job.id);
+    };
+    const first = await run();
+    expect(first.status).toBe('failed');
+    expect(count(first, 'provider.degraded')).toBe(1);
+    const resumed = await run();
+    expect(count(resumed, 'provider.degraded')).toBe(1);
+    expect(count(resumed, 'job.failed')).toBe(1);
+    provider.search.mockRejectedValueOnce(new ApiError(500, '20500', 'GET'));
+    expect(count(await run(), 'provider.degraded')).toBe(1);
+    provider.search.mockResolvedValueOnce([]);
+    expect(count(await run(), 'provider.degraded')).toBe(2);
+  });
+  it('does not repeat the failure alert when notification settings stay invalid across restarts', async () => {
+    const job = await store.add(config({ notifications: channels }));
+    const runner = () => new Runner(store, { clock, providers: () => [new FakeProvider('twilio')], notifications: () => { throw new Error('missing'); } });
+    expect((await runner().run(job.id)).status).toBe('failed');
+    const again = await runner().run(job.id);
+    expect(again.outbox.filter(e => e.event.type === 'job.failed')).toHaveLength(1);
+  });
+  it('keeps a started job cancelled when its cancellation alert cannot be sent', async () => {
+    let stopped = false;
+    const provider = new FakeProvider('twilio');
+    provider.search.mockImplementation(async () => { stopped = true; return []; });
+    const job = await store.add(config({ notifications: channels }));
+    expect((await runWith([provider], () => stopped).run(job.id)).status).toBe('running');
+    await store.cancel(job.id);
+    const failing = { deliver: async () => { throw new Error('provider changed'); } };
+    const result = await new Runner(store, { clock, providers: () => [provider], notifications: () => failing }).run(job.id);
+    expect(result.status).toBe('cancelled');
+    expect(result.outbox.filter(e => e.event.type === 'job.cancelled')).toHaveLength(1);
+  });
+  it('delivers the cancellation alert for a started job cancelled while interrupted', async () => {
+    let stopped = false;
+    const provider = new FakeProvider('twilio');
+    provider.search.mockImplementation(async () => { stopped = true; return []; });
+    const job = await store.add(config({ notifications: channels }));
+    expect((await runWith([provider], () => stopped).run(job.id)).status).toBe('running');
+    await store.cancel(job.id);
+    const result = await runWith([provider]).run(job.id);
+    expect(result.status).toBe('cancelled');
+    expect(result.outbox.find(e => e.event.type === 'job.cancelled')?.deliveries.map(d => !!d.deliveredAt)).toEqual([true]);
   });
   it('cannot process another request while an earlier write is unresolved', async () => {
     const existing = await store.add(config());
